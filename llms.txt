@@ -1,0 +1,261 @@
+# Oche
+
+> Oche is a minimalist, Express-inspired web framework for Dart (server side, built on `dart:io`). It has routing, middleware, sessions, JWT, webhooks and a Blade-style template engine. Import it with `import 'package:oche/oche.dart';`.
+
+Read this file before writing code that uses Oche. Only use the APIs listed here: do not invent Express methods that Oche does not have.
+
+## Rules for AI assistants
+
+- Route handlers take two arguments: `(Request req, Response res)`. Middleware (`use`, `all`) takes three: `(Request req, Response res, Next next)`.
+- Handlers may be `async`. A response is sent with `res.send`, `res.json`, `res.sendStatus`, `res.redirect`, `res.sendFile`, `res.render` or `res.end`, and only once.
+- If a handler returns without sending a response, the request hangs. There is no automatic 404 after a matched route.
+- To fail, `throw HttpError.notFound('message')` (or another `HttpError`). Do not use `HttpException` from `dart:io`.
+- Built-in middleware lives on `Oche`: `Oche.json()`, `Oche.urlencoded()`, `Oche.serveStatic()`, `Oche.cors()`, `Oche.logger()`, `Oche.session()`, `Oche.jwt()`. There is no `express.static`.
+- `req.body` is `Object?` and is only filled after `Oche.json()` or `Oche.urlencoded()` ran. Cast it: `req.body as Map<String, dynamic>`.
+- Oche needs `dart:io`: it does not run in the browser or in Flutter web.
+
+## Install
+
+```sh
+dart pub add oche
+```
+
+## Quick start
+
+```dart
+import 'package:oche/oche.dart';
+
+Future<void> main() async {
+  final app = Oche();
+
+  app.use(Oche.logger());
+  app.use(Oche.json());
+
+  app.get('/', (req, res) => res.send('Hello World!'));
+  app.get('/users/:id', (req, res) => res.json({'id': req.params['id']}));
+  app.post('/echo', (req, res) => res.json({'received': req.body}));
+
+  await app.listen(3000, () => print('Listening on http://localhost:3000'));
+}
+```
+
+## Application: `Oche`
+
+`Oche` extends `Router`, so every router method works on the app.
+
+- `Oche({bool caseSensitive = false, Object host = '0.0.0.0'})`
+- `Future<HttpServer> listen(int port, [void Function()? callback])`. `listen(0)` picks a free port (useful in tests).
+- `Future<void> close({bool force = false})`
+- `void onError(ErrorHandler handler)` where the handler is `(Object error, Request req, Response res)`.
+- `void views(String directory, {ViewEngine? engine, bool cache = false})` turns on `res.render`.
+- `Map<String, Object?> locals` is data available in every template.
+
+## Routing: `Router` (also the base of `Oche`)
+
+```dart
+app.get(path, handler, {middlewares: [...]});   // also post, put, delete, patch, head, options
+app.all(path, middleware);                      // every method, exact path
+app.use(middleware);                            // every request
+app.use('/prefix', middlewareOrRouter);         // mount, prefix is stripped from req.path
+app.webhook(path, handler, {secret: '...'});    // see Webhooks
+```
+
+- Paths: `/users`, `/users/:id`, and a trailing wildcard `/files/*` (value in `req.params['*']`).
+- Trailing slashes are ignored. Matching is case insensitive unless `caseSensitive: true`.
+- Layers run in registration order. Register `use(...)` middleware before the routes that need it.
+- These methods return `void`: they cannot be chained.
+
+```dart
+final users = Router();
+users.get('/', (req, res) => res.json([]));
+users.get('/:id', (req, res) => res.json({'id': req.params['id']}));
+app.use('/users', users);   // inside `users`, req.path is relative to the mount point
+```
+
+Middleware:
+
+```dart
+app.use((Request req, Response res, Next next) {
+  print('${req.method} ${req.originalUrl}');
+  next();            // continue
+  // next(error);    // or fail
+});
+```
+
+Tip: an inline closure passed alone to `use` has untyped parameters (Dart has no overloading). Annotate the types, as above, or use a named function.
+
+## Request
+
+- `method`, `path` (relative to the current mount), `baseUrl`, `originalUrl`, `uri`, `hostname`, `protocol`, `isSecure`, `ip`
+- `params` (`Map<String, String>`), `query` (`Map<String, String>`)
+- `headers`, `header('name')` (case insensitive, `String?`), `contentType` (mime only), `isContentType('application/json')`
+- `cookies` is a `List<Cookie>` (it is not a map)
+- `body` (`Object?`), `bytes()` and `text()` read the raw body (cached, safe to call many times)
+- `locals` (`Map<String, Object?>`) shares data between middlewares and handlers
+- `session` (needs the session middleware), `user` (`Map<String, Object?>?`, set by `Oche.jwt`)
+- `raw` is the underlying `HttpRequest`
+
+## Response
+
+All setters are chainable: `res.status(201).set('X-A', 'b').json({...})`.
+
+- `status(int)`, `set(name, value)`, `append(name, value)`, `get(name)`, `type('json' | 'text/csv')`
+- `cookie(name, value, {maxAge, expires, domain, path, secure, httpOnly})` and `clearCookie(name, {path, domain})`
+- `send(Object? body)`: a `String` is HTML, a `Map`/`List` is JSON, `List<int>` is binary
+- `json(data)`, `sendStatus(code)`, `redirect(url, [code = 302])`, `Future sendFile(path)`, `Future render(view, [data])`, `end()`
+- `finished` (bool), `statusCode`, `locals`, `onBeforeSend(hook)`, `raw` (the underlying `HttpResponse`)
+
+## Built-in middleware
+
+```dart
+app.use(Oche.logger());                           // "GET /x 200 3ms"
+app.use(Oche.cors());                             // origin: '*' by default
+app.use(Oche.json());                             // application/json -> req.body (Map/List/...)
+app.use(Oche.urlencoded());                       // forms -> req.body (Map<String, String>)
+app.use('/static', Oche.serveStatic('public'));   // GET/HEAD only, blocks path traversal and dotfiles
+```
+
+Body limits default to 1 MiB (`limit:` parameter). Invalid JSON is a 400, oversized bodies a 413.
+
+## Errors
+
+```dart
+throw HttpError.badRequest('msg');        // 400
+throw HttpError.unauthorized('msg');      // 401
+throw HttpError.forbidden('msg');         // 403
+throw HttpError.notFound('msg');          // 404
+throw HttpError.conflict('msg');          // 409
+throw HttpError.unprocessable('msg');     // 422
+throw HttpError.internal('msg');          // 500
+throw HttpError(418, 'I am a teapot', {'extra': 'details'});
+```
+
+The default handler answers `{"status": 404, "message": "..."}`. Unknown errors become a generic 500 and are logged to stderr. Replace the handler with `app.onError(...)`. A request that matches nothing gets `404 Cannot GET /path` as plain text.
+
+## Sessions
+
+```dart
+app.use(Oche.session(secret: 'a-long-random-secret'));   // options: store, cookieName, maxAge, path, domain, secure, httpOnly, rolling
+
+app.get('/visits', (req, res) {
+  final visits = (req.session.get<int>('visits') ?? 0) + 1;
+  req.session['visits'] = visits;
+  res.json({'visits': visits});
+});
+```
+
+- `req.session`: `[]`, `[]=`, `get<T>(key)`, `remove`, `clear`, `containsKey`, `toMap()`, `id`, `isNew`, `regenerate()` (call after login), `destroy()` (logout).
+- Values must be JSON-encodable.
+- Sessions that were never modified are not saved and send no cookie.
+- Default store: `MemoryStore` (development only). Implement `SessionStore` (`get`, `set(id, data, ttl)`, `destroy`) for production.
+- Use `secure: true` behind HTTPS.
+
+## JWT
+
+```dart
+final token = Jwt.sign({'id': 1}, secret: secret, expiresIn: const Duration(hours: 1));
+final payload = Jwt.verify(token, secret: secret);   // Map<String, Object?>, throws JwtException
+
+app.use('/private', Oche.jwt(secret: secret));        // reads "Authorization: Bearer <token>"
+app.get('/private/profile', (req, res) => res.json({'user': req.user}));
+```
+
+- Algorithms: `HS256` (default), `HS384`, `HS512`. The accepted list comes from you (`algorithms:`), never from the token.
+- `Jwt.sign` options: `algorithm`, `expiresIn`, `issuer`, `subject`, `audience`, `issuedAt`.
+- `Jwt.verify` options: `algorithms`, `issuer`, `audience`, `clockTolerance`. `JwtException.failure` is a `JwtFailure` (`malformed`, `unsupportedAlgorithm`, `invalidSignature`, `expired`, `notYetValid`, `invalidClaim`).
+- `Jwt.decode(token)` does not verify anything: never use it for security decisions.
+- `Oche.jwt` answers 401 (`Missing authentication token`, `Invalid token`, `Token expired`). Use `credentialsRequired: false` to let anonymous requests through.
+- The secret must be long and random (32+ characters). A JWT is signed, not encrypted.
+
+## Webhooks
+
+```dart
+final github = WebhookEvents();
+github.on('push', (req, res) => print('push'));
+
+app.webhook('/hooks/github', github.handle, verifier: HmacVerifier.github('secret'));
+app.webhook('/hooks/custom', (req, res) => res.sendStatus(200), secret: 'secret');
+```
+
+- `app.webhook` registers a `POST` route and verifies the signature of the raw body first (401 if invalid). Pass exactly one of `secret` or `verifier`.
+- `secret:` means HMAC-SHA256 as lowercase hex in the `X-Signature` header.
+- Verifiers: `HmacVerifier(secret, {header, prefix, hash, useBase64})`, `HmacVerifier.github(secret)`, `StripeVerifier(secret, {tolerance})`. To support another provider, implement `WebhookVerifier` (`bool verify(String? Function(String name) header, List<int> body)`).
+- `WebhookEvents` finds the event name from the `X-GitHub-Event` / `X-Event-Key` header or the JSON `type` / `event` field. It answers 200 by itself when the handler sends nothing.
+- For a custom route use `webhookMiddleware(verifier)` in `middlewares:`.
+
+## Views and templates
+
+```dart
+app.views('views');
+app.locals['appName'] = 'My site';
+app.get('/home', (req, res) => res.render('index', {'user': {'name': 'Ana'}}));
+```
+
+`res.render('admin.users.index')` reads `views/admin/users/index.html` (dots or slashes are folders; no extension in the name).
+
+Template syntax (`OcheEngine`, inspired by Laravel Blade):
+
+```html
+@extends('layouts.main')
+
+@section('content')
+  <h1>Hello, {{ user.name }}</h1>        {{-- escaped --}}
+  <p>{!! trustedHtml !!}</p>             {{-- raw, only for trusted content --}}
+
+  @if(user.age >= 18 && !banned)
+    ...
+  @elseif(user.admin)
+    ...
+  @else
+    ...
+  @endif
+
+  @foreach(items as item)                {{ loop.iteration }}. {{ item.name }}
+  @endforeach
+  @foreach(map as key => value) ... @endforeach
+
+  @include('partials.footer')
+@endsection
+```
+
+A layout prints sections with `@yield('content')` or `@yield('title', 'default')`. `@@` prints a literal `@`. Inside `@foreach`, `loop` has `index`, `iteration`, `first`, `last`, `count`.
+
+Expressions support dotted variables (`user.name`, `items.0`, `items.length`), strings, numbers, `true`/`false`/`null`, `== != < > <= >=`, `&&`, `||`, `!` and parentheses. There is **no arithmetic, no method calls and no filters**: compute values in Dart and pass them in. Missing variables print as an empty string. Objects are read through `toJson()`. `@section('name')` needs the block form (`@section('x')...@endsection`).
+
+Another engine can be plugged by implementing `ViewEngine` (`String get extension`, `Future<String> render(name, data, loader)`).
+
+## Testing an app
+
+```dart
+final app = Oche(host: InternetAddress.loopbackIPv4);
+app.get('/ping', (req, res) => res.json({'pong': true}));
+
+final server = await app.listen(0);                       // free port
+final client = HttpClient();
+final request = await client.get('127.0.0.1', server.port, '/ping');
+final response = await request.close();
+// ... read the body, then:
+client.close(force: true);
+await app.close(force: true);
+```
+
+## Common mistakes
+
+- Passing a 3-argument function to `get`/`post` (or a 2-argument one to `use`/`all`). The types differ on purpose.
+- Reading `req.body` without `Oche.json()` / `Oche.urlencoded()` first.
+- Writing `req.cookies['name']`. `cookies` is a list.
+- Calling `res.send` / `res.json` twice (it throws `StateError`).
+- Forgetting `await` on async work, or returning from a handler without responding.
+- Using arithmetic or method calls inside template expressions.
+- Registering a webhook with `app.post`: use `app.webhook` so the signature is verified.
+- Expecting `req.path` inside a mounted router to include the mount prefix. Use `req.originalUrl` or `req.baseUrl`.
+- Putting secrets in a JWT payload, or using a short `secret`.
+
+## Not implemented (yet)
+
+`multipart/form-data` and file uploads, WebSockets, `ETag`/`304` for static files, asymmetric JWT algorithms (`RS256`), sending webhooks, session stores other than memory.
+
+## Links
+
+- Source and issues: https://github.com/claudiovictors/oche
+- API reference: generate locally with `dart doc`, or see the package page on pub.dev once published

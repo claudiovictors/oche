@@ -1,0 +1,7 @@
+.dart_tool/
+build/
+doc/
+public/
+views/
+jar.txt
+.DS_Store

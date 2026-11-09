@@ -1,7 +1,7 @@
 import 'dart:convert';
 
-import 'package:oche/src/jwt/jwt.dart';
-import 'package:oche/src/jwt/jwt_exception.dart';
+import 'package:oche_web/src/jwt/jwt.dart';
+import 'package:oche_web/src/jwt/jwt_exception.dart';
 import 'package:test/test.dart';
 
 Matcher throwsJwt(JwtFailure failure) => throwsA(

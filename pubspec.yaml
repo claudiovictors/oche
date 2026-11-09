@@ -1,4 +1,4 @@
-name: oche
+name: oche_web
 description: >-
   A minimalist and flexible web framework for Dart, inspired by Express.js,
   with routing, middleware, sessions, JWT, webhooks and templates.

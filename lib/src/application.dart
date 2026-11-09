@@ -22,7 +22,7 @@ import 'view/views.dart';
 /// The Oche application: a [Router] that can also listen for HTTP requests.
 ///
 /// ```dart
-/// import 'package:oche/oche.dart';
+/// import 'package:oche_web/oche_web.dart';
 ///
 /// Future<void> main() async {
 ///   final app = Oche();

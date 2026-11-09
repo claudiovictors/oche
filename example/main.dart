@@ -1,4 +1,4 @@
-import 'package:oche/oche.dart';
+import 'package:oche_web/oche_web.dart';
 
 Future<void> main() async {
   const jwtSecret = 'troque-por-um-segredo-com-32-caracteres-ou-mais';

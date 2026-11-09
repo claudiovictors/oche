@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
-import 'package:oche/src/webhooks/signature_verifier.dart';
+import 'package:oche_web/src/webhooks/signature_verifier.dart';
 import 'package:test/test.dart';
 
 String? Function(String) headers(Map<String, String> values) =>

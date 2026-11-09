@@ -1,5 +1,5 @@
-import 'package:oche/src/view/oche_engine.dart';
-import 'package:oche/src/view/view_engine.dart';
+import 'package:oche_web/src/view/oche_engine.dart';
+import 'package:oche_web/src/view/view_engine.dart';
 import 'package:test/test.dart';
 
 Future<String> render(

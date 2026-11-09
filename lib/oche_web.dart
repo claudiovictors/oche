@@ -2,7 +2,7 @@
 /// Express.js.
 ///
 /// ```dart
-/// import 'package:oche/oche.dart';
+/// import 'package:oche_web/oche_web.dart';
 ///
 /// void main() {
 ///   final app = Oche();

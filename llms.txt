@@ -1,6 +1,6 @@
 # Oche
 
-> Oche is a minimalist, Express-inspired web framework for Dart (server side, built on `dart:io`). It has routing, middleware, sessions, JWT, webhooks and a Blade-style template engine. Import it with `import 'package:oche/oche.dart';`.
+> Oche is a minimalist, Express-inspired web framework for Dart (server side, built on `dart:io`). It has routing, middleware, sessions, JWT, webhooks and a Blade-style template engine. Import it with `import 'package:oche_web/oche_web.dart';`.
 
 Read this file before writing code that uses Oche. Only use the APIs listed here: do not invent Express methods that Oche does not have.
 
@@ -17,13 +17,13 @@ Read this file before writing code that uses Oche. Only use the APIs listed here
 ## Install
 
 ```sh
-dart pub add oche
+dart pub add oche_web
 ```
 
 ## Quick start
 
 ```dart
-import 'package:oche/oche.dart';
+import 'package:oche_web/oche_web.dart';
 
 Future<void> main() async {
   final app = Oche();
